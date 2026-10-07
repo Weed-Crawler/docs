@@ -1,0 +1,11 @@
+# WeedCrawler docs
+
+> Reference documentation for WeedCrawler's Canadian cannabis retail data products. Written for analysts and the AI assistants they use.
+
+## Docs
+
+- [BBFYB data feed, data dictionary](https://raw.githubusercontent.com/Weed-Crawler/docs/main/bbfyb-gold/data-dictionary.md): the GOLD star schema in Snowflake and Microsoft Fabric. Fact tables (daily sales, daily inventory, weekly availability, OCS regulator sales, Statistics Canada market size, Reddit review mentions, product launches), dimension tables (stores, products, variants, identifiers, brands and producers, sales tax), coverage by province, freshness and revisions, conventions, worked SQL, FAQ, changelog.
+
+## Optional
+
+- [WeedCrawler](https://weedcrawler.ca): the company behind the data.
