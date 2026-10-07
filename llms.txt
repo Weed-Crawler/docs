@@ -5,6 +5,7 @@
 ## Docs
 
 - [BBFYB data feed, data dictionary](https://raw.githubusercontent.com/Weed-Crawler/docs/main/bbfyb-gold/data-dictionary.md): the GOLD star schema in Snowflake and Microsoft Fabric. Fact tables (daily sales, daily inventory, weekly availability, OCS regulator sales, Statistics Canada market size, Reddit review mentions, product launches), dimension tables (stores, products, variants, identifiers, brands and producers, sales tax), coverage by province, freshness and revisions, conventions, worked SQL, FAQ, changelog.
+- [Connecting Microsoft Fabric to the feed](https://raw.githubusercontent.com/Weed-Crawler/docs/main/bbfyb-gold/fabric-client-guide.md): how a client connects a Fabric lakehouse to the BBFYB Iceberg tables with S3 shortcuts, verifies the Delta conversion, and troubleshoots it.
 
 ## Optional
 

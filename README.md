@@ -7,6 +7,7 @@ Public reference documentation for WeedCrawler data products. Written for data c
 | Document | What it covers |
 |---|---|
 | [BBFYB data feed, data dictionary](bbfyb-gold/data-dictionary.md) | The GOLD star schema delivered in Snowflake and Microsoft Fabric: every table and column, coverage by province, freshness and revision rules, conventions, worked SQL examples, FAQ and changelog. |
+| [Connecting Microsoft Fabric to the feed](bbfyb-gold/fabric-client-guide.md) | Step by step setup of the OneLake shortcuts to the Iceberg tables: lakehouse, connection, one shortcut per table folder, verification, what to expect from the feed, troubleshooting. |
 
 An [`llms.txt`](llms.txt) at the root lists the same documents in the format AI tools look for.
 
