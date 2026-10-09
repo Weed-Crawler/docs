@@ -2,14 +2,14 @@
 # BBFYB Data Feed — Data Dictionary
 
 *Best Bang For Your Bud (BBFYB) retail cannabis dataset — reference guide for data consumers.*
-*Version 1.9 — October 2026 (changelog at the bottom). Questions: hi@weedcrawler.ca*
+*Version 2.1 — October 2026 (changelog at the bottom). Questions: hi@weedcrawler.ca*
 
 ## What this dataset is
 
 BBFYB continuously observes Canadian recreational cannabis retail — store menus,
 prices, inventory levels, and daily sales movements — across thousands of stores,
 and consolidates everything into a clean, analysis-ready **star schema**: three
-fact tables (what happened), five dimension tables (who/what/where), and one
+fact tables (what happened), six dimension tables (who/what/where), and one
 convenience rollup. Beside it sit Statistics Canada's official monthly market
 totals and population (`FCT_STATCAN_RETAIL_MONTHLY`, `DIM_GEO_POPULATION`, since
 v1.5): market context by province, never a denominator for the facts above.
@@ -18,6 +18,7 @@ v1.5): market context by province, never a denominator for the facts above.
                     DIM_BRAND_PRODUCER
                            |
                       DIM_PRODUCT ──── DIM_PRODUCT_VARIANT ─── DIM_VARIANT_IDENTIFIER
+                                              |  └──── DIM_PRODUCT_SUPPLIER (by province)
                                               |
        FCT_SALES_DAILY ───────────────────────┤
        FCT_INVENTORY_DAILY ───────────────────┤        FCT_REGULATOR_MONTHLY_SALES
@@ -33,7 +34,8 @@ v1.5): market context by province, never a denominator for the facts above.
 ```
 
 **Join keys:** facts carry `MASTER_STORE_ID` (→ DIM_MASTER_STORE) and `PCV_ID`
-(→ DIM_PRODUCT_VARIANT → DIM_PRODUCT → DIM_BRAND_PRODUCER).
+(→ DIM_PRODUCT_VARIANT → DIM_PRODUCT → DIM_BRAND_PRODUCER). Who supplies a
+product in a given province: `PCV_ID` + province → DIM_PRODUCT_SUPPLIER.
 
 ## Coverage: two sources, one catalog
 
@@ -646,6 +648,46 @@ not corrected here.
 | PRODUCER_GROUP | text | Parent-company rollup (e.g. Tweed → Canopy Growth) |
 | ATTRIBUTION_SOURCE / CONFIDENCE / VERIFIED_AT | text/date | Provenance of the brand→producer mapping |
 
+### DIM_PRODUCT_SUPPLIER — who supplies each product, by province (~38,800)
+
+*New in v2.1.* A brand's producer depends on the province. The SQDC buys Back Forty from
+Origine Nature and General Admission from Rose Science Vie; the OCS lists Auxly and WestLeaf.
+`DIM_BRAND_PRODUCER` gives one national answer per brand. This table gives, for each product
+variant, the supplier **in each province where a source tells us**, plus the national answer.
+
+| PROVINCE | SOURCE | Who it is |
+|---|---|---|
+| `QC` | `sqdc_list` | The producer the SQDC buys the product from, from the SQDC's own producer list, matched per product (no brand-name matching). Covers 99.99% of Québec dollars. |
+| `ON` | `ocs` | The OCS supplier of record (the same field as `FCT_REGULATOR_MONTHLY_SALES.SUPPLIER`). When a product changed supplier, the current one. |
+| `CA` | as in `DIM_BRAND_PRODUCER` | The national brand owner, through the product's brand. Use it for national views and for every other province (no other regulator reports a supplier). |
+
+| Column | Type | Description |
+|---|---|---|
+| PCV_ID | int | → `DIM_PRODUCT_VARIANT` |
+| PROVINCE | text | `QC`, `ON` or `CA` (national). One row per (PCV_ID, PROVINCE) |
+| SUPPLIER | text | Display name. Québec names come lower case from the SQDC list and are title-cased here, which lowers acronyms ("Cbd" for "CBD"): restore them if you display names |
+| SUPPLIER_RAW | text | The name exactly as the source spells it |
+| SOURCE | text | `sqdc_list`, `ocs`, or the national row's attribution source |
+| SHARE_OF_DOLLARS | number | The chosen supplier's share of the product's dollars (QC: 36 months; ON: 12 months). Below 1 when a product was split or changed supplier; NULL for `CA` |
+| REFRESHED_AT | timestamp | Last rebuild |
+
+**Supplier of record vs brand owner.** They differ on purpose for licensed and contract-made
+brands: Sherbinskis is owned by Final Bell and supplied to the OCS by CannaPiece. For a
+province's market (who you compete with on that shelf) use the province's row; for national
+league tables use `CA`.
+
+```sql
+-- Québec sales by the producer the SQDC buys from, last 12 months
+SELECT ps.SUPPLIER, ROUND(SUM(f.SALES_DOLLARS)) AS dollars
+FROM FCT_SALES_DAILY f
+JOIN DIM_MASTER_STORE m ON m.MASTER_STORE_ID = f.MASTER_STORE_ID AND m.PROVINCE_STATE = 'QC'
+LEFT JOIN DIM_PRODUCT_SUPPLIER ps ON ps.PCV_ID = f.PCV_ID AND ps.PROVINCE = 'QC'
+WHERE f.CLOSING_ON >= DATEADD(month, -12, CURRENT_DATE())
+GROUP BY 1 ORDER BY 2 DESC;
+```
+
+Refreshed daily at 10:00 ET.
+
 ---
 
 ## Worked examples
@@ -789,6 +831,11 @@ instead and don't need Snowflake credentials.
 ---
 
 ## Changelog
+
+**v2.1 — 2026-10** — *one new table; nothing existing changes.*
+- **New `DIM_PRODUCT_SUPPLIER`**: who supplies each product variant, by province. Québec from the SQDC's
+  own producer list, Ontario from the OCS supplier of record, plus the national brand owner (`CA`). Use the
+  province's row for that province's market, `CA` for national views.
 
 **v1.9 — 2026-10** — *new columns; existing columns keep their meaning.*
 - **`FCT_PRODUCT_LAUNCH` / `_CURVE`: availability.** New `DOORS_AVAILABLE_*` columns count stores where a
