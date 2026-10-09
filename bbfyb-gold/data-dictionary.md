@@ -476,8 +476,12 @@ own date and rollout. For a Canada-wide count, keep `LAUNCH_SCOPE = 'new_to_cana
 | METHOD_VERSION | text | `v2-availability-shelf28` |
 
 **`FCT_PRODUCT_LAUNCH_CURVE`** holds the rollout day by day: one row per launch
-× `DAY_SINCE_LAUNCH` (0 to 90, observed days only) with `CLOSING_ON`,
-`DOORS_LISTED`, `DOORS_IN_STOCK` and (v1.9) `DOORS_AVAILABLE`. ~335,000 rows.
+× `DAY_SINCE_LAUNCH` (observed days only) with `CLOSING_ON`,
+`DOORS_LISTED`, `DOORS_IN_STOCK` and (v1.9) `DOORS_AVAILABLE`. Days run 0 to
+90, or (v2.0) to the 90th day after the launch reached its 3rd store when that
+is later, so a launch that took months to reach shelves still has its first 90
+days on shelves. Filter `DAY_SINCE_LAUNCH <= 90` to compare launches day for
+day; the D7..D90 and LATEST columns above read days 0 to 90 only. ~395,000 rows.
 
 **`V_PRODUCT_LAUNCH_BENCHMARK`** (secure view, SQL only; not in the Fabric feed)
 is the typical rollout: per province × category × subcategory × day since
@@ -486,6 +490,16 @@ stock and (v1.9) available, over the launches of the trailing year that reached 
 days observed. `BENCHMARK_LEVEL = 'category'` rows (SUBCATEGORY NULL) cover the
 whole category for thin subcategories. Groups with fewer than 5 launches are
 left out, and Prince Edward Island (5 stores observed) has no benchmark.
+
+**`V_PRODUCT_LAUNCH_SHELF_BENCHMARK`** (v2.0, secure view, SQL only; not in the
+Fabric feed) is the same idea counted from the shelf: per province × category ×
+subcategory × `DAY_SINCE_SHELF` (0 = the day the launch reached its 3rd store,
+to 90), the 25th percentile, median and 75th percentile of stores where launches
+were available. It covers the launches `LAUNCH_VERDICT` compares with: 28 days
+on shelves, 3rd store within the year before the last refresh, at least 5, no
+Prince Edward Island. Its day 28 is the verdict's typical launch, except that
+the view includes every launch where `TYPICAL_SHELF_D28_*` leaves the launch
+itself out. Use it to chart a launch from its first shelf day.
 
 Reading rules:
 
@@ -836,6 +850,14 @@ instead and don't need Snowflake credentials.
 - **New `DIM_PRODUCT_SUPPLIER`**: who supplies each product variant, by province. Québec from the SQDC's
   own producer list, Ontario from the OCS supplier of record, plus the national brand owner (`CA`). Use the
   province's row for that province's market, `CA` for national views.
+
+**v2.0 — 2026-10** — *a new view; launch curves run longer.*
+- **`V_PRODUCT_LAUNCH_SHELF_BENCHMARK`**: the typical rollout by days on shelves, the same launches and
+  measure as `LAUNCH_VERDICT`.
+- **`FCT_PRODUCT_LAUNCH_CURVE`**: launches that reached shelves late now run to their 90th day on shelves
+  (past day 90 since launch). Rows for days 0 to 90 are unchanged, and so is every `FCT_PRODUCT_LAUNCH`
+  column. If you sum or average the curve, filter `DAY_SINCE_LAUNCH <= 90` to keep the old window.
+- `V_PRODUCT_LAUNCH_BENCHMARK` keeps days 0 to 90.
 
 **v1.9 — 2026-10** — *new columns; existing columns keep their meaning.*
 - **`FCT_PRODUCT_LAUNCH` / `_CURVE`: availability.** New `DOORS_AVAILABLE_*` columns count stores where a
