@@ -2,7 +2,7 @@
 # BBFYB Data Feed — Data Dictionary
 
 *Best Bang For Your Bud (BBFYB) retail cannabis dataset — reference guide for data consumers.*
-*Version 2.2 — October 2026 (changelog at the bottom). Questions: hi@weedcrawler.ca*
+*Version 2.2.1 — October 2026 (changelog at the bottom). Questions: hi@weedcrawler.ca*
 
 ## What this dataset is
 
@@ -692,9 +692,9 @@ not corrected here.
 | BRAND | text | Standardized brand name |
 | BRAND_RAW | text | Brand name as scraped |
 | PARENT_BRAND | text | Parent brand where applicable (sparse) |
-| PRODUCER | text | Verified licensed producer behind the brand |
+| PRODUCER | text | Licensed producer behind the brand. Curated from the OCS and research; for a brand sold only in Québec, the producer the SQDC buys it from (`ATTRIBUTION_SOURCE = 'sqdc_list'`) |
 | PRODUCER_GROUP | text | Parent-company rollup (e.g. Tweed → Canopy Growth) |
-| ATTRIBUTION_SOURCE / CONFIDENCE / VERIFIED_AT | text/date | Provenance of the brand→producer mapping |
+| ATTRIBUTION_SOURCE / CONFIDENCE / VERIFIED_AT | text/date | Provenance of the brand→producer mapping. `sqdc_list` / `fallback`: a Québec-only brand named from the SQDC's producer list, not verified |
 
 ### DIM_PRODUCT_SUPPLIER — who supplies each product, by province (~38,800)
 
@@ -707,7 +707,7 @@ variant, the supplier **in each province where a source tells us**, plus the nat
 |---|---|---|
 | `QC` | `sqdc_list` | The producer the SQDC buys the product from, from the SQDC's own producer list, matched per product (no brand-name matching). Covers 99.99% of Québec dollars. |
 | `ON` | `ocs` | The OCS supplier of record (the same field as `FCT_REGULATOR_MONTHLY_SALES.SUPPLIER`). When a product changed supplier, the current one. |
-| `CA` | as in `DIM_BRAND_PRODUCER` | The national brand owner, through the product's brand. Use it for national views and for every other province (no other regulator reports a supplier). |
+| `CA` | as in `DIM_BRAND_PRODUCER` | The national brand owner, through the product's brand (for Québec-only brands, the SQDC's producer, `SOURCE = 'sqdc_list'`). Use it for national views and for every other province (no other regulator reports a supplier). |
 
 | Column | Type | Description |
 |---|---|---|
@@ -879,6 +879,13 @@ instead and don't need Snowflake credentials.
 ---
 
 ## Changelog
+
+**v2.2.1 — 2026-10** — *more brands get a producer; existing producers do not change.*
+- **`DIM_BRAND_PRODUCER`: Québec-only brands now have a producer**: the one the SQDC buys them from, named the
+  way the same company's other brands already are (R'Belle with MTL Cannabis, Wô Là with Organigram). These rows
+  carry `ATTRIBUTION_SOURCE = 'sqdc_list'` and `ATTRIBUTION_CONFIDENCE = 'fallback'`; filter them out if you need
+  verified attributions only. About 150 brands; producer coverage of Québec cannabis dollars goes from 77% to 98%.
+  Brands also sold in Ontario keep their curated attribution path.
 
 **v2.2 — 2026-10** — *new columns on three dimensions and a new identifier type; existing columns keep their meaning and position.*
 - **`DIM_MASTER_STORE`**: `LICENSE_ID`, `LICENSE_STATUS`, the provincial regulator's licence number and
