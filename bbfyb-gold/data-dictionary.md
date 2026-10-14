@@ -2,7 +2,7 @@
 # BBFYB Data Feed — Data Dictionary
 
 *Best Bang For Your Bud (BBFYB) retail cannabis dataset — reference guide for data consumers.*
-*Version 2.1 — October 2026 (changelog at the bottom). Questions: hi@weedcrawler.ca*
+*Version 2.2 — October 2026 (changelog at the bottom). Questions: hi@weedcrawler.ca*
 
 ## What this dataset is
 
@@ -126,6 +126,12 @@ new gap will be listed here.
   weekly: inventory keeps what was observed at the time.
 - **Catalog re-mapping.** The same weekly re-map moves sales onto a product when
   it gets matched or merged in the catalog, over the trailing 6 months.
+- **Schema changes.** New tables and columns are announced to feed contacts at
+  least **7 days** before they land; removals and renames at least **30 days**
+  before, with the old name kept for the notice period. Columns are only ever
+  appended, so existing columns keep their position. The changelog at the bottom
+  is the record. New rows (stores, products, identifier types, re-mapped sales)
+  are not schema changes and arrive without notice.
 - Daily history begins **2025-01-01** for the rest of Canada and **2020-06-23**
   for Quebec (sales & inventory; see *Coverage*). Regulator monthly data begins
   **January 2024**.
@@ -574,6 +580,15 @@ product isn't in the consolidated catalog (NULL `PCV_ID`) are excluded.
 | PROVINCE_STATE / CITY / ADDRESS / POSTAL_CODE / COUNTRY | text | Location |
 | LATITUDE / LONGITUDE | decimal | Geocoordinates |
 | IS_ACTIVE | boolean | FALSE = store closed (its provincial retail license is no longer active) or merged away upstream. Historical rows are kept so facts always find their store — filter `IS_ACTIVE` for the current store universe (~4,700) |
+| LICENSE_ID | text | *v2.2.* The retail licence or authorization number, as the provincial regulator's public list spells it. NULL where the store was never matched to a regulator listing |
+| LICENSE_STATUS | text | *v2.2.* The regulator's own status word: Ontario `Authorized to Open` or `Cancelled`; Alberta, Saskatchewan and New Brunswick `Active`; British Columbia and Quebec `Open`; a few `Coming Soon` / `Closed`. NULL = no regulator listing (all of Manitoba, Nova Scotia, PEI, Newfoundland and Yukon, and unmatched stores elsewhere) |
+
+The two columns describe the licence, `IS_ACTIVE` describes the store: a store can
+read `Authorized to Open` and `IS_ACTIVE = FALSE` (it closed, or it was a duplicate
+merged into another row). For the **Ontario licensed universe** use
+`LICENSE_STATUS = 'Authorized to Open' AND IS_ACTIVE` (~1,900 stores); the ~330
+active Ontario rows with no status are stores the regulator list never matched,
+most of them long dead.
 
 Quebec stores are the SQDC's: `CHAIN_NAME = 'SQDC'`, one row per store. The SQDC
 online store (`SQDC - Z -En ligne`) is a row too, with no address or coordinates:
@@ -593,8 +608,9 @@ exclude it from maps and radius queries, keep it in sales and distribution.
 | STRAIN_NAME | text | Strain ("street name") where known |
 | GROWING_PROVINCE | text | Where grown (lowercase province name), where reported |
 | IS_CRAFT | boolean | Flagged craft in the OCS catalog |
+| CREATED_AT / UPDATED_AT | timestamp | *v2.2.* When the product entered BBFYB's catalog, and when any of its attributes last changed. UTC |
 
-### DIM_PRODUCT_VARIANT — one row per pack/size of a product (~27,500)
+### DIM_PRODUCT_VARIANT — one row per pack/size of a product (~28,100 incl. retired)
 
 | Column | Type | Description |
 |---|---|---|
@@ -603,9 +619,19 @@ exclude it from maps and radius queries, keep it in sales and distribution.
 | FORMAT | text | Pack/size as sold, e.g. `3.5g`, `10x0.35g`, `4 x 355ml` |
 | GTIN / SKU / GTIN_CASE | text | Primary barcode, retailer SKU, case-level barcode (90% / 85% / ~20% coverage). Historical aliases live in DIM_VARIANT_IDENTIFIER |
 | PACK_COUNT | int | Parsed from FORMAT (e.g. 10 for `10x0.35g`) |
-| UNIT_SIZE | decimal | Parsed unit size; the unit (g/ml/mg) is in the FORMAT text |
+| UNIT_SIZE | decimal | Parsed unit size: the number before the unit (0.35 for `10x0.35g`), or the count when the format is a count (90 for `90 pack`) |
+| UNIT_SIZE_UOM | text | *v2.2.* Unit of `UNIT_SIZE`: `g`, `ml`, `mg`, `oz`, `mm` (rolling papers), or `unit` when the format is a count (`2 pack`, `10 Caps`, `5 Seeds`). NULL when FORMAT carries no unit (`0.5`, `5x0.5`), about 1.6% of rows |
+| IS_ACTIVE | boolean | *v2.2.* FALSE = retired variant: merged into another variant, or removed from the catalog (~630 rows). Kept so old sales keep a product; filter `IS_ACTIVE` for the current catalog (~27,500) |
+| MERGED_INTO_PCV_ID | int | *v2.2.* On a retired variant, the active variant that carries its barcode today (1033 → 3570, merged 2026-03-23). NULL on active rows, and on retired rows whose barcode went nowhere or to more than one variant |
+| CREATED_AT / UPDATED_AT | timestamp | *v2.2.* When the variant entered BBFYB's catalog, and when it last changed (a merge sets both the retired row's `UPDATED_AT` and the survivor's). UTC |
 
-### DIM_VARIANT_IDENTIFIER — barcode/SKU lookup bridge (~53,000)
+**Retired variants** keep their `PC_ID`. When the parent product was retired too,
+that `PC_ID` is absent from `DIM_PRODUCT`: follow `MERGED_INTO_PCV_ID` to the live
+variant and its product. The weekly re-map moves sales onto the surviving variant,
+so a retired variant normally has no fact rows; the exceptions (14 variants, old
+rows outside the re-map window) now resolve instead of dropping out of product joins.
+
+### DIM_VARIANT_IDENTIFIER — barcode/SKU lookup bridge (~57,000)
 
 One row per (variant, identifier), including **every historical alias**. Join your
 own GTIN or SKU list on `IDENTIFIER_VALUE` to land on `PCV_ID`.
@@ -613,8 +639,16 @@ own GTIN or SKU list on `IDENTIFIER_VALUE` to land on `PCV_ID`.
 | Column | Type | Description |
 |---|---|---|
 | PCV_ID | int | Product variant |
-| IDENTIFIER_TYPE | text | `GTIN`, `SKU`, or `GTIN_CASE` |
+| IDENTIFIER_TYPE | text | `GTIN`, `SKU`, `GTIN_CASE`, or `SQDC_SKU` (since v2.2) |
 | IDENTIFIER_VALUE | text | The identifier |
+
+**`SQDC_SKU` (v2.2).** The SQDC's own article code, the number on sqdc.ca product
+pages. For most products it is the GS1 barcode; for accessories, and for products
+the SQDC re-listed under a new supplier, it is an internal code starting with `1`
+(`100000000402` for OCB Premium Noir 1 1/4 + Embouts, `159969005038` for Green
+Monké Mangue Goyave). Every code is present twice, as printed (12 digits) and
+zero-padded to 14 digits, so either spelling joins. Only active variants carry
+identifiers; a code the SQDC publishes on two different variants is left out.
 
 ### DIM_SALES_TAX — sales tax included in the dollars (14 provinces/territories)
 
@@ -845,6 +879,17 @@ instead and don't need Snowflake credentials.
 ---
 
 ## Changelog
+
+**v2.2 — 2026-10** — *new columns on three dimensions and a new identifier type; existing columns keep their meaning and position.*
+- **`DIM_MASTER_STORE`**: `LICENSE_ID`, `LICENSE_STATUS`, the provincial regulator's licence number and
+  status word. Ontario licensed universe: `LICENSE_STATUS = 'Authorized to Open' AND IS_ACTIVE`.
+- **`DIM_PRODUCT_VARIANT`**: now keeps retired variants (`IS_ACTIVE = FALSE`, about 630 rows) with
+  `MERGED_INTO_PCV_ID` pointing at the variant that carries their barcode today; `UNIT_SIZE_UOM`;
+  `CREATED_AT` / `UPDATED_AT`. Filter `IS_ACTIVE` to keep the previous row set.
+- **`DIM_PRODUCT`**: `CREATED_AT` / `UPDATED_AT`.
+- **`DIM_VARIANT_IDENTIFIER`**: `IDENTIFIER_TYPE = 'SQDC_SKU'`, the SQDC article code (about 3,600 rows).
+- The notice rule for schema changes is now written down under *Freshness & revisions* (7 days for
+  additions, 30 for removals). This release shipped on shorter notice at the requesting client's choice.
 
 **v2.1 — 2026-10** — *one new table; nothing existing changes.*
 - **New `DIM_PRODUCT_SUPPLIER`**: who supplies each product variant, by province. Québec from the SQDC's
