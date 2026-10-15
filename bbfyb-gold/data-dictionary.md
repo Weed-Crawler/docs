@@ -2,7 +2,7 @@
 # BBFYB Data Feed — Data Dictionary
 
 *Best Bang For Your Bud (BBFYB) retail cannabis dataset — reference guide for data consumers.*
-*Version 2.3 — October 2026 (changelog at the bottom). Questions: hi@weedcrawler.ca*
+*Version 2.4 — October 2026 (changelog at the bottom). Questions: hi@weedcrawler.ca*
 
 ## What this dataset is
 
@@ -18,10 +18,12 @@ v1.5): market context by province, never a denominator for the facts above.
                     DIM_BRAND_PRODUCER
                            |
                       DIM_PRODUCT ──── DIM_PRODUCT_VARIANT ─── DIM_VARIANT_IDENTIFIER
-                                              |  └──── DIM_PRODUCT_SUPPLIER (by province)
+                                              |  ├──── DIM_PRODUCT_SUPPLIER (by province)
+                                              |  └──── DIM_PRODUCT_REGULATOR (by regulator)
                                               |
        FCT_SALES_DAILY ───────────────────────┤
        FCT_INVENTORY_DAILY ───────────────────┤        FCT_REGULATOR_MONTHLY_SALES
+       FCT_PRICE_TIMELINE ────────────────────┤
        RPT_AVAILABILITY_WEEKLY ───────────────┘             (joins via PCV_ID)
               |
        DIM_MASTER_STORE
@@ -35,7 +37,8 @@ v1.5): market context by province, never a denominator for the facts above.
 
 **Join keys:** facts carry `MASTER_STORE_ID` (→ DIM_MASTER_STORE) and `PCV_ID`
 (→ DIM_PRODUCT_VARIANT → DIM_PRODUCT → DIM_BRAND_PRODUCER). Who supplies a
-product in a given province: `PCV_ID` + province → DIM_PRODUCT_SUPPLIER.
+product in a given province: `PCV_ID` + province → DIM_PRODUCT_SUPPLIER. How a regulator
+lists it (its SKU, supplier, still listed or not): `PCV_ID` + regulator → DIM_PRODUCT_REGULATOR.
 
 ## Coverage: two sources, one catalog
 
@@ -132,6 +135,11 @@ new gap will be listed here.
   appended, so existing columns keep their position. The changelog at the bottom
   is the record. New rows (stores, products, identifier types, re-mapped sales)
   are not schema changes and arrive without notice.
+- **`FCT_PRICE_TIMELINE`** is rewritten daily around 10:15 Eastern over the trailing
+  8 days, and every Sunday over the trailing 6 months like the sales re-map, so a
+  price period can start a few days earlier or later after a re-map.
+  **`DIM_PRODUCT_REGULATOR`** is rebuilt daily around 10:05 Eastern from the
+  regulators' current catalogues; it keeps no history.
 - Daily history begins **2025-01-01** for the rest of Canada and **2020-06-23**
   for Quebec (sales & inventory; see *Coverage*). Regulator monthly data begins
   **January 2024**.
@@ -247,6 +255,60 @@ store at least once in its last 21 observed days. `IS_AVAILABLE` implies
 | IS_IN_STOCK | boolean | EOD_QTY > 0 (FALSE when the quantity is unknown) |
 | IS_AVAILABLE | boolean | Purchasable that day: in stock, **or** reported available by a store that never reports quantities |
 | IS_LISTED | boolean | The store carries the product that day: it was available, or sold a real unit, at least once in the pair's last 21 **observed** days (days with no row for the pair do not count). A listing ends 21 observed days after the last stock or sale and comes back with a restock. **The column to use for distribution.** NULL on rows with no `PCV_ID` |
+
+### FCT_PRICE_TIMELINE — menu price history by store × product variant
+
+*New in v2.4.* The price each store's menu showed for each product variant, one row
+per price period, from **2025-01-01**. A new row starts on the first day the menu
+shows a different price; `VALID_TO` is the day before the next change, NULL for
+the price in force today. ~80M rows.
+
+How the price is read: on every day a store's menu lists a variant (the days
+`FCT_INVENTORY_DAILY` has a row), the price is the menu price observed for it at
+that store, carried from its last change. **Quebec** prices are set by the SQDC
+for the whole province, the online store included, so every SQDC store carries
+the same rows for a variant. When a store lists the same variant twice at two
+prices (about 6% of store × variant pairs outside Quebec), `LIST_PRICE` is the
+cheaper one and `LIST_PRICE_MAX` the dearer.
+
+| Column | Type | Description |
+|---|---|---|
+| MASTER_STORE_ID | int | Store |
+| PCV_ID | int | Product variant (consolidated variants only) |
+| VALID_FROM | date | First menu day at this price |
+| VALID_TO | date | Last day of the period (the day before the next change). **NULL = current** |
+| LIST_PRICE | decimal | Menu price, dollars, same tax basis as `SALES_DOLLARS` (see `DIM_SALES_TAX`) |
+| LIST_PRICE_MAX | decimal | Dearest listing of the variant at that store; equals `LIST_PRICE` in most rows |
+| REGULAR_PRICE | decimal | The non-sale price the menu shows next to `LIST_PRICE` |
+| IS_DISCOUNTED | boolean | `LIST_PRICE < REGULAR_PRICE`: the store is running a sale |
+
+**A price row is not a listing.** A period stays open while the store's menu does
+not show a new price, including weeks when the product is off the menu. To know
+whether the store carried the product on a day, use `FCT_INVENTORY_DAILY.IS_LISTED`;
+to know the price that day, join this table on the date range.
+
+Coverage: about 3,000 stores outside Quebec (stores whose menu feed publishes no
+price, about 15% of inventory pairs, have no rows) and every SQDC store.
+
+```sql
+-- Price on each day a store carried the variant, with its sale flag
+SELECT i.CLOSING_ON, i.MASTER_STORE_ID, p.LIST_PRICE, p.IS_DISCOUNTED
+FROM FCT_INVENTORY_DAILY i
+JOIN FCT_PRICE_TIMELINE p
+  ON p.MASTER_STORE_ID = i.MASTER_STORE_ID AND p.PCV_ID = i.PCV_ID
+ AND i.CLOSING_ON BETWEEN p.VALID_FROM AND COALESCE(p.VALID_TO, '9999-12-31')
+WHERE i.PCV_ID = 12345 AND i.IS_LISTED
+  AND i.CLOSING_ON >= DATEADD(day, -90, CURRENT_DATE());
+
+-- Price changes in Ontario last week (one row per store and change)
+SELECT p.PCV_ID, p.MASTER_STORE_ID, p.VALID_FROM, p.LIST_PRICE,
+       LAG(p.LIST_PRICE) OVER (PARTITION BY p.MASTER_STORE_ID, p.PCV_ID ORDER BY p.VALID_FROM) AS PREVIOUS_PRICE
+FROM FCT_PRICE_TIMELINE p
+JOIN DIM_MASTER_STORE m ON m.MASTER_STORE_ID = p.MASTER_STORE_ID AND m.PROVINCE_STATE = 'ON'
+QUALIFY p.VALID_FROM >= DATEADD(day, -7, CURRENT_DATE()) AND PREVIOUS_PRICE IS NOT NULL;
+```
+
+Refreshed daily at 10:15 ET.
 
 ### FCT_REGULATOR_MONTHLY_SALES — Ontario (OCS) market data
 
@@ -743,6 +805,61 @@ GROUP BY 1 ORDER BY 2 DESC;
 
 Refreshed daily at 10:00 ET.
 
+### DIM_PRODUCT_REGULATOR — each product as the provincial regulators list it (~39,000)
+
+*New in v2.4.* One row per product variant and provincial regulator that lists it:
+the regulator's own codes and names, the supplier it buys from, and whether it
+still lists the variant. Use it to look a variant up by a regulator's SKU, to see
+a product the way a regulator's catalogue shows it, or to filter on attributes
+only one regulator publishes (SQDC intensity, grown in Quebec).
+
+| REGULATOR_CODE | Province | Rows | SKU | Supplier | Still listed |
+|---|---|---|---|---|---|
+| `ocs` | ON | ~17,000 | OCS SKU (the one OCS sales reports use) | licensed producer | yes |
+| `bccs` | BC | ~8,600 | 7-digit BCCS code | vendor of record | yes (`PRODUCT_EXIT` = no) |
+| `mbll` | MB | ~3,800 | none | supplier | no status published |
+| `cannabis_nb` | NB | ~3,300 | Cannabis NB item number | none | no status published |
+| `sqdc` | QC | ~2,700 | SQDC article code (12 digits) | the producer the SQDC buys from | yes |
+| `pei` | PE | ~2,000 | none | none | no status published |
+| `nslc` | NS | ~1,500 | NSLC product number | none | no status published |
+
+| Column | Type | Description |
+|---|---|---|
+| PCV_ID | int | → `DIM_PRODUCT_VARIANT`. One row per (PCV_ID, REGULATOR_CODE) |
+| REGULATOR_CODE | text | `sqdc`, `ocs`, `bccs`, `cannabis_nb`, `nslc`, `pei`, `mbll` |
+| PROVINCE_STATE | text | The regulator's province; joins `DIM_MASTER_STORE.PROVINCE_STATE` |
+| REGULATOR_SKU | text | The regulator's article code for the variant (see the table above); NULL where it publishes none |
+| REGULATOR_PRODUCT_ID | text | The regulator's product page id (SQDC `ProductId`, OCS item number, ...; PEI: the page URL) |
+| REGULATOR_PRODUCT_NAME | text | The product name as the regulator writes it |
+| REGULATOR_BRAND | text | The brand as the regulator writes it |
+| SUPPLIER | text | The regulator's supplier of record, as printed. Can differ from the brand owner in `DIM_BRAND_PRODUCER` and between provinces |
+| IS_ACTIVE | boolean | The regulator still lists the variant. **NULL** for regulators that publish no status (NB, NS, PE, MB) |
+| REGULATOR_STATUS | text | The regulator's raw status word where it has one (OCS `Active`, BCCS lifecycle such as `ACTIVE`, `PRODUCT_EXIT`) |
+| INTENSITY | text | SQDC only: the intensity the SQDC shows (`Modérée`, `Moyenne`, `Élevée`) |
+| IS_LOCAL | boolean | Grown in the regulator's province (SQDC "cultivé au Québec", OCS growing province, BCCS region, MB supplier province). NULL when the regulator does not say |
+| FIRST_SEEN_ON | date | First day the variant appeared in this regulator's catalogue (as observed by BBFYB) |
+| UPDATED_AT | timestamp | Last change to the regulator's catalogue entry |
+| N_LISTINGS | int | How many catalogue entries the regulator has for the variant (OCS often has several). The row takes the one still listed, then the most recent, and fills gaps from the others |
+| ATTRIBUTES | text | JSON text with the remaining regulator fields: `url`; OCS `craft`, `potency_thc`, `potency_cbd`, `availability`, `growing_province`, `regulator_retail_price`; BCCS `wholesale_price`, `indigenous_product`, `internal_product_name`; MB `supplier_province`, `fulfillment_method` |
+| REFRESHED_AT | timestamp | Last rebuild |
+
+**Two supplier tables, two questions.** `DIM_PRODUCT_SUPPLIER` gives one cleaned
+supplier per variant and province (with Quebec names normalised and a national
+row). This table gives each regulator's own wording, including regulators that
+table does not cover (BC, MB). The SQDC article code is also in
+`DIM_VARIANT_IDENTIFIER` (`IDENTIFIER_TYPE = 'SQDC_SKU'`, in both 12- and 14-digit
+forms) for barcode-style lookups.
+
+```sql
+-- Variants the SQDC still lists, grown in Quebec, with their intensity
+SELECT v.PCV_ID, r.REGULATOR_SKU, r.REGULATOR_PRODUCT_NAME, r.SUPPLIER, r.INTENSITY
+FROM DIM_PRODUCT_REGULATOR r
+JOIN DIM_PRODUCT_VARIANT v ON v.PCV_ID = r.PCV_ID
+WHERE r.REGULATOR_CODE = 'sqdc' AND r.IS_ACTIVE AND r.IS_LOCAL;
+```
+
+Refreshed daily at 10:05 ET.
+
 ---
 
 ## Worked examples
@@ -886,6 +1003,14 @@ instead and don't need Snowflake credentials.
 ---
 
 ## Changelog
+
+**v2.4 — 2026-10** — *two new tables; nothing existing changes.*
+- **New `FCT_PRICE_TIMELINE`**: the menu price of each product variant at each store, one row per
+  price period, from 2025-01-01, with the regular price and a sale flag. Quebec carries the SQDC's
+  provincial price at every SQDC store.
+- **New `DIM_PRODUCT_REGULATOR`**: each variant as the provincial regulators list it (SQDC, OCS, BCCS,
+  Cannabis NB, NSLC, PEI Cannabis, MB distributor list): their SKU, product name, supplier of record,
+  still-listed flag, SQDC intensity, grown-in-province flag.
 
 **v2.3 — 2026-10** — *new columns on `FCT_PRODUCT_LAUNCH`; existing columns keep their meaning and position.*
 - **Sales speed** of a launch over its first 28 days on shelves: `SALES_STORES_SHELF_D28`,
