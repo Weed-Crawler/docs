@@ -2,7 +2,7 @@
 # BBFYB Data Feed — Data Dictionary
 
 *Best Bang For Your Bud (BBFYB) retail cannabis dataset — reference guide for data consumers.*
-*Version 2.2.1 — October 2026 (changelog at the bottom). Questions: hi@weedcrawler.ca*
+*Version 2.3 — October 2026 (changelog at the bottom). Questions: hi@weedcrawler.ca*
 
 ## What this dataset is
 
@@ -480,6 +480,13 @@ own date and rollout. For a Canada-wide count, keep `LAUNCH_SCOPE = 'new_to_cana
 | TYPICAL_SEGMENT, TYPICAL_LEVEL | text | What the typical launch covers (`dried flower` / `all flower`; `subcategory` / `category`) |
 | LAUNCH_VERDICT | text | `well_ahead` (above p75), `ahead` (above the median), `in_line` (within 10% of the median, at least 3 stores), `behind`, `well_behind` (below p25); `too_early` (under 28 days on shelves), `not_on_shelves` (fewer than 3 stores), `no_benchmark` (Prince Edward Island, thin segments) |
 | METHOD_VERSION | text | `v2-availability-shelf28` |
+| SALES_STORES_SHELF_D28 | int | *v2.3.* Stores in the province that had its lead size (`LEAD_PCV_ID`) in stock on at least one of its first 28 days on shelves (days 0–27 after the 3rd store) **and report stock quantities**, the stores whose sales we observe. Stores that report available / unavailable only never count (all 40 BC Cannabis Stores, which also report no sales). NULL until 35 days after the 3rd store, when the window's sales are final |
+| IN_STOCK_STORE_DAYS_SHELF_D28 | int | *v2.3.* Days in stock summed over those stores, same window |
+| UNITS_SOLD_SHELF_D28 | decimal | *v2.3.* Units of the lead size sold at those stores, same window, observed sales only (no synthetic estimates). Fractional (see *Conventions*) |
+| UNITS_PER_STORE_WEEK_SHELF_D28 | decimal | *v2.3.* **Sales speed**: `UNITS_SOLD_SHELF_D28 / IN_STOCK_STORE_DAYS_SHELF_D28 × 7`, units of the lead size per store per week while in stock (the lead size is in 95% of a launch's day-28 stores). Few stores make a noisy figure: compare launches measured at 25+ stores |
+| TYPICAL_UNITS_PER_STORE_WEEK_MEDIAN, _P75, _LAUNCHES | decimal, int | *v2.3.* The same speed over comparable launches: same subcategory **and size band** of the lead size (`TYPICAL_UNITS_PER_STORE_WEEK_SEGMENT`), else the rollout's own segment (`TYPICAL_SEGMENT`) when the band has fewer than 20, reached 3 stores in the trailing year, measured at 25+ stores, **this launch left out**. NULL when fewer than 20 such launches (all of Prince Edward Island and Nova Scotia) |
+| TYPICAL_UNITS_PER_STORE_WEEK_SEGMENT | text | *v2.3.* What that typical speed covers: `pre-rolls, packs of 15+`, `dried flower, 3.5 g`, or the rollout's segment (`pre-rolls`, `all extracts`). Bands: pre-rolls by pack count (singles, 2–3, 4–7, 8–14, 15+), edibles by pack count (singles, 2–5, 6–10, 11+), flower by grams in the pack (1 g or less, 3.5, 7, 14, 28 g or more), extracts by grams in the pack and vapes by grams per unit (0.5 g or less, 1 g, over 1 g). A unit of a 20-pack is not a unit of a single, so speeds compare within a band |
+| WORTH_A_LOOK | boolean | *v2.3.* Fewer stores than a typical launch at day 28 (`DOORS_AVAILABLE_SHELF_D28 < TYPICAL_SHELF_D28_MEDIAN`) but selling at least as fast as three quarters of them (`≥ TYPICAL_UNITS_PER_STORE_WEEK_P75`), measured at 25+ stores. NULL: not measurable. The early stores often have the customers for a niche product: a lead, not a forecast |
 
 **`FCT_PRODUCT_LAUNCH_CURVE`** holds the rollout day by day: one row per launch
 × `DAY_SINCE_LAUNCH` (observed days only) with `CLOSING_ON`,
@@ -879,6 +886,13 @@ instead and don't need Snowflake credentials.
 ---
 
 ## Changelog
+
+**v2.3 — 2026-10** — *new columns on `FCT_PRODUCT_LAUNCH`; existing columns keep their meaning and position.*
+- **Sales speed** of a launch over its first 28 days on shelves: `SALES_STORES_SHELF_D28`,
+  `IN_STOCK_STORE_DAYS_SHELF_D28`, `UNITS_SOLD_SHELF_D28`, `UNITS_PER_STORE_WEEK_SHELF_D28`, and the typical
+  speed of comparable launches, same subcategory and size band (`TYPICAL_UNITS_PER_STORE_WEEK_MEDIAN`, `_P75`,
+  `_LAUNCHES`, `_SEGMENT`).
+- **`WORTH_A_LOOK`**: launches in fewer stores than typical that sell faster than most.
 
 **v2.2.1 — 2026-10** — *more brands get a producer; existing producers do not change.*
 - **`DIM_BRAND_PRODUCER`: Québec-only brands now have a producer**: the one the SQDC buys them from, named the
