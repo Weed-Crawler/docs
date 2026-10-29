@@ -2,7 +2,7 @@
 # BBFYB Data Feed — Data Dictionary
 
 *Best Bang For Your Bud (BBFYB) retail cannabis dataset — reference guide for data consumers.*
-*Version 2.4 — October 2026 (changelog at the bottom). Questions: hi@weedcrawler.ca*
+*Version 2.7 — October 2026 (changelog at the bottom). Questions: hi@weedcrawler.ca*
 
 ## What this dataset is
 
@@ -49,7 +49,7 @@ sources that behave differently. Read this before comparing provinces.
 |---|---|---|
 | What is observed | a **covered panel**: the retailers BBFYB can read (~2,600 stores a day out of every licensed store) | a **census**: every SQDC store (~115, plus the SQDC online store), every day |
 | Daily history starts | **2025-01-01** | **2020-06-23** |
-| Modeled days (`IS_SYNTHETIC`) | yes, 18–20% of dollars in 2025–2026 | never |
+| Modeled days (`IS_SYNTHETIC`) | yes, 22–24% of dollars in 2025–2026 (since v2.5) | never |
 | Stores reporting only "available" (no quantity) | ~14% of stores | none: every Quebec store reports quantities |
 | Product mapping (`PCV_ID` NULL) | ≈10% of dollars unmapped | ≈0% since 2025 |
 
@@ -77,6 +77,25 @@ Quebec and in Ontario is the same `PC_ID` / `PCV_ID`, with the same `CATEGORY`,
 the whole legal market of that province; rest-of-Canada figures describe the
 stores BBFYB covers. A national total is therefore a *covered-market* total.
 Compare provinces on shares and ratios, not on raw dollars or store counts.
+
+**A share across provinces needs two corrections (since v2.6).**
+
+1. **Tax.** Put dollars on one basis first: Quebec, New Brunswick and Nova
+   Scotia shelf prices include sales tax, the other provinces' menus do not.
+   Divide by `1 + INCLUDED_TAX_RATE` from `DIM_SALES_TAX`.
+2. **Weight.** A brand's share of the summed sales weighs each province by how
+   many of its stores BBFYB covers, not by the size of its market. Quebec, a
+   full census, would count for about a quarter of Canada instead of about a
+   seventh. Take the brand's share in each province, then average the
+   provincial shares weighted by each province's retail market. The market is
+   Statistics Canada's 12-month sales, or the SQDC census net of tax for
+   Quebec.
+
+This is the method behind the market-scaled national the WeedCrawler MCP
+returns for `canada` and `rest_of_canada` (its answer's `meta.methodology` and
+`meta.weighting` give the exact weights used). The worked example "Market-scaled
+national share" is an illustrative approximation of it, not a reproduction: to
+quote a national figure, use the MCP answer and keep it.
 
 **Reproducing pre-v1.4 numbers.** Anything you built before September 25, 2026
 was rest of Canada only. Add `m.PROVINCE_STATE <> 'QC'` (join
@@ -163,8 +182,9 @@ new gap will be listed here.
   deals (e.g. "2 for $72") are not visible on menus, so provinces that run them
   (notably New Brunswick) read slightly high.
 - **Sales units are fractional** by design: when a store's feed is briefly
-  unavailable, BBFYB estimates the missing days (see `IS_SYNTHETIC`), and
-  estimates carry decimals. Sum first, round last.
+  unavailable, or its menu caps the quantity it shows (since v2.5), BBFYB
+  estimates the hidden sales (see `IS_SYNTHETIC`), and estimates carry
+  decimals. Sum first, round last.
 - Product taxonomy is BBFYB's standardized ladder:
   `CATEGORY` (flower / extracts / vapes / edibles / topicals / accessories) →
   `SUBCATEGORY` (dried flower, pre-rolls, oils, beverages, …) →
@@ -198,7 +218,7 @@ Canada, 2020-06-23 onward for Quebec.
 | SALES_UNITS | decimal | Units sold that day (fractional — see conventions) |
 | SALES_DOLLARS | decimal | Revenue that day, CAD |
 | UNIT_PRICE | decimal | SALES_DOLLARS / SALES_UNITS for the day |
-| IS_SYNTHETIC | boolean | TRUE = modeled estimate filling a gap in the store's feed, not an observed transaction. Rest of Canada only (18–20% of its dollars in 2025–2026); **always FALSE in Quebec**, which is observed every day. Filter out with `WHERE NOT IS_SYNTHETIC` if you want observed-only. |
+| IS_SYNTHETIC | boolean | TRUE = modeled estimate, not an observed transaction: it fills a gap in the store's feed, or (since v2.5) sales hidden while the store's menu caps the quantity it shows at 25. On a capped day a store-product can carry both an observed row and a modeled row; sum them. Rest of Canada only (22–24% of its dollars in 2025–2026); **always FALSE in Quebec**, which is observed every day. Filter out with `WHERE NOT IS_SYNTHETIC` if you want observed-only. |
 | UNMAPPED_CATEGORY | text | **Only on NULL-PCV rows** (always NULL on mapped rows): what the unmapped product is, in the same taxonomy as DIM_PRODUCT — `flower`, `vapes`, `edibles`, `extracts`, `topicals`, `accessories`, or `unknown`. Derived from the source listing's raw category/name. |
 | UNMAPPED_SUBCATEGORY | text | Best-effort subcategory for NULL-PCV rows (`pre-rolls`, `dried flower`, `battery`, …). Two values exist only here: `nicotine` and `apparel` (under `accessories`). NULL when there's no signal. |
 
@@ -310,28 +330,48 @@ QUALIFY p.VALID_FROM >= DATEADD(day, -7, CURRENT_DATE()) AND PREVIOUS_PRICE IS N
 
 Refreshed daily at 10:15 ET.
 
-### FCT_REGULATOR_MONTHLY_SALES — Ontario (OCS) market data
+### FCT_REGULATOR_MONTHLY_SALES — provincial regulator market data (Ontario, British Columbia)
 
-Official monthly wholesale **sell-through** by SKU, region and channel.
-~680K rows, January 2024 onward.
+The provincial distributors' official monthly sales by SKU: what the OCS sold in
+Ontario (by region and channel, January 2024 onward, ~680K rows) and, *from v2.7*,
+what the BC Liquor Distribution Branch sold in British Columbia (by channel,
+September 2026 onward, history to follow). One row per month × SKU × region ×
+channel, finest grain only, so a month never double counts.
 
-> **Important:** these figures are *sell-through* (product sold onward), **not**
-> "units distributed/shipped". They will not match OCS reports that count
-> distribution — the gap between shipped and sold is real information.
+> **Read `REGULATOR_CODE` and `SALES_CHANNEL` together.** The channels do not
+> measure the same thing in the two provinces, and `WHOLESALE` is **not** what
+> consumers bought:
+
+| REGULATOR_CODE | SALES_CHANNEL | What the row measures | Value |
+|---|---|---|---|
+| `OCS` | `WHOLESALE` | OCS sales to licensed Ontario retailers (what stores bought from the OCS), by region | OCS wholesale |
+| `OCS` | `WEB` | ocs.ca sales to consumers | retail |
+| `OCS` | `FARMGATE` | producer farmgate stores (negligible) | — |
+| `BCCS` | `WHOLESALE` | LDB shipments to licensed BC retailers (what stores bought from the LDB); `REGION` is `__ALL__` | LDB wholesale |
+| `BCCS` | `RETAIL` | the corporate BC Cannabis Stores' sales to consumers (those ~40 stores only, not private retailers) | retail |
+
+Neither province reports "units distributed" from producers to the distributor,
+and the `WHOLESALE` rows will not match reports that do: the gap between what a
+distributor received and what it sold onward is inventory, which is real
+information. Filter on one regulator and one channel; never add Ontario and
+British Columbia, or wholesale and retail, into one number without saying so.
+For BC, `WHOLESALE` covers every retailer in the province; `RETAIL` is the
+corporate chain's till, so the two overlap for those stores and sit at
+different price levels.
 
 | Column | Type | Description |
 |---|---|---|
-| REGULATOR_CODE | text | Data source (`OCS`) |
+| REGULATOR_CODE | text | `OCS` (Ontario) or `BCCS` (British Columbia). Upper case here; `DIM_PRODUCT_REGULATOR` uses the lower-case codes, so join with `LOWER(REGULATOR_CODE)` |
 | YEAR_MONTH | date | First day of the sales month |
-| PCV_ID | int | Product variant (NULL = SKU not yet mapped; ~0% of dollars) |
-| GTIN | text | Barcode as reported by the regulator |
-| PROVINCIAL_SKU | text | Regulator's SKU identifier |
-| REGION | text | OCS sales region (e.g. "GTA Region (Excludes Toronto)") |
-| SALES_CHANNEL | text | e.g. WHOLESALE |
+| PCV_ID | int | Product variant (NULL = SKU not yet mapped; ~0% of Ontario dollars) |
+| GTIN | text | Barcode as reported by the regulator (OCS) or from the regulator's product catalogue (BCCS) |
+| PROVINCIAL_SKU | text | The regulator's SKU: OCS SKU, or the 7-digit BCCS code (`DIM_PRODUCT_REGULATOR.REGULATOR_SKU`) |
+| REGION | text | OCS sales region (e.g. "GTA Region (Excludes Toronto)"); `__ALL__` for BC, which reports no region |
+| SALES_CHANNEL | text | See the table above |
 | SALES_UNITS | int | Units sold in the month |
-| SALES_DOLLARS | decimal | Sales value, CAD |
-| LIST_PRICE | decimal | Listed unit price, CAD |
-| SUPPLIER | text | Licensed producer as reported by the regulator (authoritative) |
+| SALES_DOLLARS | decimal | Sales value, CAD, at the value level in the table above |
+| LIST_PRICE | decimal | Listed unit price, CAD (OCS: the ocs.ca price; BCCS: the LDB wholesale price per selling unit) |
+| SUPPLIER | text | Licensed producer (OCS) or vendor of record (BCCS) as reported by the regulator (authoritative) |
 | BRAND / CATEGORY | text | Source-reported conveniences; prefer joining the DIM tables via PCV_ID |
 | MATCH_STATUS | text | Whether the SKU is mapped to the BBFYB catalog |
 
@@ -900,15 +940,68 @@ ORDER BY m.PROVINCE_STATE, f.EOD_QTY DESC NULLS LAST;
 `EOD_QTY` NULL with `IS_AVAILABLE` TRUE is a store that reports availability
 but not quantities. Drop the `QUALIFY` line to get the daily series instead.
 
-**National sales by province, safe end date for both sources:**
+**National sales by province, net of sales tax, safe end date for both sources:**
 ```sql
-SELECT m.PROVINCE_STATE, SUM(f.SALES_DOLLARS) AS dollars
+SELECT m.PROVINCE_STATE, SUM(f.SALES_DOLLARS / (1 + t.INCLUDED_TAX_RATE)) AS dollars_ex_tax
 FROM FCT_SALES_DAILY f
 JOIN DIM_MASTER_STORE m ON m.MASTER_STORE_ID = f.MASTER_STORE_ID
+JOIN DIM_SALES_TAX t ON t.PROVINCE_STATE = m.PROVINCE_STATE
+                    AND f.CLOSING_ON BETWEEN t.VALID_FROM AND t.VALID_TO
 WHERE f.CLOSING_ON >= '2025-01-01'   -- national trends start here (see Coverage)
   AND f.CLOSING_ON <= (SELECT MIN(COMMON_THROUGH) FROM REFRESH_STATUS WHERE FACT_TABLE = 'FCT_SALES_DAILY')
-GROUP BY 1 ORDER BY dollars DESC;
+GROUP BY 1 ORDER BY dollars_ex_tax DESC;
 ```
+These are covered-store totals: add them up for a covered-market total, never
+divide one brand's sum by their sum for a national share (see below).
+
+**Market-scaled national share of one producer group (illustrative approximation):**
+```sql
+SET (date_from, date_to) = ('2026-09-01', '2026-09-30');
+WITH sales AS (            -- covered-store sales, net of tax, accessories out
+  SELECT m.PROVINCE_STATE, COALESCE(bp.PRODUCER_GROUP, bp.PRODUCER) AS grp,
+         f.SALES_DOLLARS / (1 + t.INCLUDED_TAX_RATE) AS net
+  FROM FCT_SALES_DAILY f
+  JOIN DIM_MASTER_STORE m ON m.MASTER_STORE_ID = f.MASTER_STORE_ID
+  JOIN DIM_SALES_TAX t ON t.PROVINCE_STATE = m.PROVINCE_STATE
+                      AND f.CLOSING_ON BETWEEN t.VALID_FROM AND t.VALID_TO
+  LEFT JOIN DIM_PRODUCT_VARIANT v ON v.PCV_ID = f.PCV_ID
+  LEFT JOIN DIM_PRODUCT d ON d.PC_ID = v.PC_ID
+  LEFT JOIN DIM_BRAND_PRODUCER bp ON bp.BRAND_ID = d.BRAND_ID
+  WHERE f.CLOSING_ON BETWEEN $date_from AND $date_to
+    AND COALESCE(d.CATEGORY, f.UNMAPPED_CATEGORY, '') <> 'accessories'
+),
+province_share AS (        -- unmapped sales stay in the denominator
+  SELECT PROVINCE_STATE, SUM(IFF(grp = 'YOUR GROUP', net, 0)) / SUM(net) AS share
+  FROM sales GROUP BY 1
+),
+last_month AS (             -- latest published StatCan month up to the period's end
+  SELECT MAX(YEAR_MONTH) AS m FROM FCT_STATCAN_RETAIL_MONTHLY
+  WHERE GEO_CODE = 'CA' AND SALES_DOLLARS IS NOT NULL
+    AND YEAR_MONTH <= DATE_TRUNC(month, $date_to::DATE)
+),
+market AS (                -- 12 months of retail sales, net of tax
+  SELECT s.GEO_CODE AS PROVINCE_STATE, SUM(s.SALES_DOLLARS) AS market_dollars
+  FROM FCT_STATCAN_RETAIL_MONTHLY s CROSS JOIN last_month l
+  WHERE s.GEO_TYPE IN ('province', 'territory') AND s.GEO_CODE <> 'QC'
+    AND s.YEAR_MONTH > DATEADD(month, -12, l.m) AND s.YEAR_MONTH <= l.m
+  GROUP BY 1 HAVING COUNT(s.SALES_DOLLARS) = 12
+  UNION ALL                -- Quebec: the SQDC census, net of GST + QST
+  SELECT 'QC', SUM(f.SALES_DOLLARS) / 1.14975
+  FROM FCT_SALES_DAILY f
+  JOIN DIM_MASTER_STORE m ON m.MASTER_STORE_ID = f.MASTER_STORE_ID AND m.PROVINCE_STATE = 'QC'
+  CROSS JOIN last_month l
+  WHERE f.CLOSING_ON >= DATEADD(month, -11, l.m) AND f.CLOSING_ON < DATEADD(month, 1, l.m)
+  HAVING COUNT(DISTINCT DATE_TRUNC(month, f.CLOSING_ON)) = 12
+)
+SELECT SUM(ps.share * mk.market_dollars) / SUM(mk.market_dollars) AS national_share
+FROM province_share ps JOIN market mk USING (PROVINCE_STATE);
+```
+A province with no covered sales drops out of the weights. A brand absent from
+a province counts 0% there. Rest of Canada: add `AND m.PROVINCE_STATE <> 'QC'`
+in `sales`. Differences from the MCP: it also leaves out a StatCan month
+published out of line (listed in its `meta.weighting.market_months_excluded`)
+and averages the valid months, so the weights, and the share, can differ. For
+September 2026, Cannara: this query 4.30%, the MCP 4.29%.
 
 **Rest of Canada only (the pre-v1.4 scope):** add `AND m.PROVINCE_STATE <> 'QC'`.
 **Quebec only, full history:** `AND m.PROVINCE_STATE = 'QC'`, any date from 2020-06-23.
@@ -918,17 +1011,30 @@ GROUP BY 1 ORDER BY dollars DESC;
 SELECT YEAR_MONTH,
        SUM(IFF(SUPPLIER = 'YOUR PRODUCER NAME', SALES_DOLLARS, 0)) / SUM(SALES_DOLLARS) AS share
 FROM FCT_REGULATOR_MONTHLY_SALES
-WHERE CATEGORY = 'flower'
+WHERE REGULATOR_CODE = 'OCS' AND SALES_CHANNEL = 'WHOLESALE' AND CATEGORY = 'flower'
 GROUP BY 1 ORDER BY 1;
 ```
+For British Columbia use `REGULATOR_CODE = 'BCCS' AND SALES_CHANNEL = 'WHOLESALE'`
+(every BC retailer, at LDB wholesale value) or `'RETAIL'` (the corporate BC
+Cannabis Stores only, at retail value). Always name the regulator and the
+channel: the two provinces' `WHOLESALE` rows are each distributor's sales to
+its own retailers, and a share only means something within one of them.
 
 ## FAQ
 
 **Why did last week's numbers change?** The trailing 7 days are provisional —
 stores report late and estimates get replaced by observations. Day 8+ is stable.
 
-**Why are units fractional?** Short feed gaps are filled with modeled estimates
-(marked `IS_SYNTHETIC`), which carry decimals. Round after aggregating.
+**Why are units fractional?** Short feed gaps and capped-menu days are filled
+with modeled estimates (marked `IS_SYNTHETIC`), which carry decimals. Round after
+aggregating.
+
+**Why did rest-of-Canada sales rise on October 23, 2026?** Some store menus show
+at most 25 units of a product. While stock stays above 25 the quantity never
+moves, so sales on those days were invisible and counted as zero. Since v2.5
+BBFYB estimates them, and the history was restated from 2025-01-01: rest-of-Canada
+units rose about 8% in 2025 and 5% in 2026. Quebec did not change. See the v2.5
+changelog entry.
 
 **Why don't the OCS figures match OCS's own reports?** Our regulator table is
 *sell-through* (sold onward); many OCS reports count *units distributed*
@@ -1003,6 +1109,47 @@ instead and don't need Snowflake credentials.
 ---
 
 ## Changelog
+
+**v2.7 (2026-10):** *one table gains a second province; nothing existing changes.*
+- **British Columbia in `FCT_REGULATOR_MONTHLY_SALES`.** Rows with `REGULATOR_CODE = 'BCCS'`
+  carry the BC Liquor Distribution Branch's monthly market reports: `SALES_CHANNEL = 'WHOLESALE'`
+  is what every licensed BC retailer bought from the LDB (wholesale value), `'RETAIL'` what the
+  corporate BC Cannabis Stores sold to consumers (retail value). `REGION` is `__ALL__` for BC.
+  September 2026 first; earlier months follow as the history is loaded.
+- **Read the channel with the regulator.** The section now tabulates what each
+  (`REGULATOR_CODE`, `SALES_CHANNEL`) pair measures. Ontario rows are unchanged; their
+  `WHOLESALE` channel was always OCS sales to retailers, not consumer sales, and the text now
+  says so plainly.
+- Queries that filter `FCT_REGULATOR_MONTHLY_SALES` on nothing but a date or a category now
+  mix two provinces and two price levels: add `REGULATOR_CODE` and `SALES_CHANNEL`.
+- No column added, renamed or retyped.
+
+**v2.6 (2026-10):** *documentation only; no data changed.*
+- **Shares across provinces:** the Coverage section explains the two corrections (sales tax, market weight).
+- **Worked example:** "Market-scaled national share" reproduces the WeedCrawler MCP's `canada` share.
+- The "National sales by province" example is now net of sales tax (`DIM_SALES_TAX`).
+
+**v2.5 (2026-10-23):** *history restated; no column changed.*
+- **Capped menus.** Some store menus (mostly on one e-commerce platform) show at most 25 units
+  of a product. While stock stays above 25, the shown quantity does not move, so the sales on
+  those days were invisible and recorded as zero. BBFYB now estimates them, from the same
+  store's own sales of that product over the previous 28 days, or else from comparable
+  stores that show their full stock. The estimates are rows with `IS_SYNTHETIC = TRUE`; on
+  those days the observed row (usually zero) stays beside them.
+- **Restatement:** `FCT_SALES_DAILY` and everything built on it were rebuilt for the rest of
+  Canada from 2025-01-01. Units rose about 8% in 2025 and 5% in 2026 (since April 2026,
+  4–5.5% a month). By province, 2025 / 2026: Ontario +8.6% / +6.0%, British Columbia
+  +11.2% / +7.8%, Alberta +5.2% / +2.5%, Saskatchewan +5.4% / +2.0%, Manitoba +4.9% / +2.1%,
+  Newfoundland and Labrador +20% / +20% (most of its covered stores use capped menus).
+  Nova Scotia, New Brunswick and Prince Edward Island did not change. **Quebec did not change.**
+- **Effect on shares:** producers whose products sit at capped stores in larger quantities
+  gain the most. For most producers a share within a province moves by less than half a point.
+- **Accuracy:** hiding a month of observed sales and estimating it back recovers about 95% of
+  them overall, less for some value-priced producers, and runs about 18% high on January 1–4
+  (the estimate leans on December). The `IS_SYNTHETIC` share of rest-of-Canada dollars is now
+  22–24%, not 18–20%.
+- Anything you built before October 23, 2026 on rest-of-Canada sales will differ: re-run it.
+  `WHERE NOT IS_SYNTHETIC` still gives observed-only figures.
 
 **v2.4 — 2026-10** — *two new tables; nothing existing changes.*
 - **New `FCT_PRICE_TIMELINE`**: the menu price of each product variant at each store, one row per
