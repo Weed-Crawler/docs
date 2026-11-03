@@ -2,7 +2,7 @@
 # BBFYB Data Feed — Data Dictionary
 
 *Best Bang For Your Bud (BBFYB) retail cannabis dataset — reference guide for data consumers.*
-*Version 2.7 — October 2026 (changelog at the bottom). Questions: hi@weedcrawler.ca*
+*Version 2.8 — November 2026 (changelog at the bottom). Questions: hi@weedcrawler.ca*
 
 ## What this dataset is
 
@@ -798,12 +798,14 @@ not corrected here.
 | Column | Type | Description |
 |---|---|---|
 | BRAND_ID | int | Key |
-| BRAND | text | Standardized brand name |
+| BRAND | text | The brand as sold, one name per id: a sub-brand keeps its full name (`Bleuh Light`), a standalone brand its standardized spelling. Spelling twins (two ids, one name) exist; `BRAND_ID` is the identity |
 | BRAND_RAW | text | Brand name as scraped |
 | PARENT_BRAND | text | Parent brand where applicable (sparse) |
 | PRODUCER | text | Licensed producer behind the brand. Curated from the OCS and research; for a brand sold only in Québec, the producer the SQDC buys it from (`ATTRIBUTION_SOURCE = 'sqdc_list'`) |
 | PRODUCER_GROUP | text | Parent-company rollup (e.g. Tweed → Canopy Growth) |
 | ATTRIBUTION_SOURCE / CONFIDENCE / VERIFIED_AT | text/date | Provenance of the brand→producer mapping. `sqdc_list` / `fallback`: a Québec-only brand named from the SQDC's producer list, not verified |
+| BRAND_FAMILY | text | *(v2.8)* The brand family the id rolls up to: `Bleuh` for `Bleuh`, `Bleuh Light` and `Bleuh Clair`; a standalone brand is its own family. Never NULL. `GROUP BY BRAND_FAMILY` is the family total; the sum over a family's ids equals it (one product belongs to one id) |
+| SUB_BRAND | text | *(v2.8)* What the name adds to the family (`Light`, `Clair`); NULL for the family's root brand and for a standalone brand |
 
 ### DIM_PRODUCT_SUPPLIER — who supplies each product, by province (~38,800)
 
@@ -1109,6 +1111,18 @@ instead and don't need Snowflake credentials.
 ---
 
 ## Changelog
+
+**v2.8 (2026-11):** *two columns appended to one dimension; one column's meaning restated.*
+- **`DIM_BRAND_PRODUCER.BRAND_FAMILY` and `SUB_BRAND`.** A brand family (`Bleuh`) and the
+  sub-brands sold under it (`Bleuh Light`, `Bleuh Clair`) are separate `BRAND_ID`s; the new
+  columns say which family an id belongs to and what its name adds. `GROUP BY BRAND_FAMILY`
+  rolls a family up; totals do not change, only the grouping.
+- **`BRAND` is the brand as sold again.** Between 2026-10-30 and this release, the family
+  mapping was loaded before these columns existed and `BRAND` showed the family name on 268
+  sub-brand ids (three ids named `Bleuh`, fifteen named `BOXHOT`). Rows grouped by `BRAND`
+  over that window merged a family's ids; group by `BRAND_ID`, or by `BRAND_FAMILY` when a
+  family total is what you want.
+- No column renamed or retyped; the new columns are appended last.
 
 **v2.7 (2026-10):** *one table gains a second province; nothing existing changes.*
 - **British Columbia in `FCT_REGULATOR_MONTHLY_SALES`.** Rows with `REGULATOR_CODE = 'BCCS'`
