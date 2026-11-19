@@ -2,7 +2,7 @@
 # BBFYB Data Feed — Data Dictionary
 
 *Best Bang For Your Bud (BBFYB) retail cannabis dataset — reference guide for data consumers.*
-*Version 2.8 — November 2026 (changelog at the bottom). Questions: hi@weedcrawler.ca*
+*Version 2.9 — November 2026 (changelog at the bottom). Questions: hi@weedcrawler.ca*
 
 ## What this dataset is
 
@@ -374,6 +374,21 @@ different price levels.
 | SUPPLIER | text | Licensed producer (OCS) or vendor of record (BCCS) as reported by the regulator (authoritative) |
 | BRAND / CATEGORY | text | Source-reported conveniences; prefer joining the DIM tables via PCV_ID |
 | MATCH_STATUS | text | Whether the SKU is mapped to the BBFYB catalog |
+
+#### One province only: FCT_REGULATOR_MONTHLY_SALES_OCS and FCT_REGULATOR_MONTHLY_SALES_BCCS
+
+*From v2.9.* The same rows, split by regulator, each in its own feed folder:
+`FCT_REGULATOR_MONTHLY_SALES_OCS` holds the `OCS` rows (Ontario), and
+`FCT_REGULATOR_MONTHLY_SALES_BCCS` holds the `BCCS` rows (British Columbia).
+The columns, grain and channel meanings are exactly those above. A feed
+subscription can then include one province without the other.
+
+- Use the combined table **or** the province tables, never both in one sum:
+  they hold the same rows.
+- Each province table is copied from the combined table after it refreshes
+  each night, so the two always agree by the time the chain finishes.
+- New provinces get their own table (`FCT_REGULATOR_MONTHLY_SALES_<CODE>`)
+  when their regulator data is loaded; the combined table keeps every province.
 
 ### FCT_STATCAN_RETAIL_MONTHLY — official market size (Statistics Canada)
 
@@ -1111,6 +1126,13 @@ instead and don't need Snowflake credentials.
 ---
 
 ## Changelog
+
+**v2.9 (2026-11):** *two tables added; nothing existing changes.*
+- **`FCT_REGULATOR_MONTHLY_SALES_OCS` and `FCT_REGULATOR_MONTHLY_SALES_BCCS`.** The regulator
+  market sales, one province per table and per feed folder, so a subscription can include
+  Ontario or British Columbia alone. Same columns and rows as `FCT_REGULATOR_MONTHLY_SALES`,
+  which is unchanged and keeps every province.
+- Do not add a province table to the combined table: they hold the same rows.
 
 **v2.8 (2026-11):** *two columns appended to one dimension; one column's meaning restated.*
 - **`DIM_BRAND_PRODUCER.BRAND_FAMILY` and `SUB_BRAND`.** A brand family (`Bleuh`) and the
