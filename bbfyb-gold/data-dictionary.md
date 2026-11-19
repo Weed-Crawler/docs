@@ -390,6 +390,27 @@ subscription can then include one province without the other.
 - New provinces get their own table (`FCT_REGULATOR_MONTHLY_SALES_<CODE>`)
   when their regulator data is loaded; the combined table keeps every province.
 
+#### Scoped to your entitlement: BBFYB_CLIENT_SCOPED.REPORTS
+
+*From v2.10.* Direct-SQL clients can also read the regulator data, and their
+own Level 1 sell-in, through secure views that return only the rows their
+agreement covers:
+
+| View | What it returns | Columns |
+|---|---|---|
+| `BBFYB_CLIENT_SCOPED.REPORTS.V_REGULATOR_MONTHLY_SALES` | `FCT_REGULATOR_MONTHLY_SALES` rows of the regulators you have access to | same 14 columns, same order and types |
+| `BBFYB_CLIENT_SCOPED.REPORTS.V_TIER2_SELLIN` | your own OCS sell-in (Level 1), by store and product | your OCS vendor number's rows |
+| `BBFYB_CLIENT_SCOPED.REPORTS.V_TIER2_SELLIN_WEEKLY` | your own BC weekly sell-in (Level 1), by store and product | your BC vendor number's rows |
+
+- Access to a regulator's market follows your agreement and the reports you
+  send us: it opens on its own when a report arrives and is refreshed every
+  day. A view with no rows means that market or dataset is not open for you
+  yet.
+- `V_REGULATOR_MONTHLY_SALES` is a drop-in replacement for the table: change
+  the name in your query, nothing else.
+- Your own Level 1 rows stay available after a market lapses: they are your
+  data.
+
 ### FCT_STATCAN_RETAIL_MONTHLY — official market size (Statistics Canada)
 
 Statistics Canada's official **monthly retail-sales estimates for the cannabis-
@@ -1123,9 +1144,19 @@ GOLD object (new objects are covered automatically), no access to anything
 else in the account. Each client gets their own user and XS warehouse. Microsoft Fabric consumers receive the same tables via the feed
 instead and don't need Snowflake credentials.
 
+Regulator market data and your own Level 1 sell-in are also available through
+the entitlement-scoped views in `BBFYB_CLIENT_SCOPED.REPORTS` (see
+FCT_REGULATOR_MONTHLY_SALES above); Fabric consumers receive the same
+entitlement as per-province folders and a private Level 1 folder.
+
 ---
 
 ## Changelog
+
+**v2.10 (2026-11):** *three views added; nothing existing changes.*
+- **`BBFYB_CLIENT_SCOPED.REPORTS`.** `V_REGULATOR_MONTHLY_SALES` (the regulator market rows
+  your agreement covers, same columns as `FCT_REGULATOR_MONTHLY_SALES`), `V_TIER2_SELLIN`
+  and `V_TIER2_SELLIN_WEEKLY` (your own OCS and BC sell-in). Direct-SQL access only.
 
 **v2.9 (2026-11):** *two tables added; nothing existing changes.*
 - **`FCT_REGULATOR_MONTHLY_SALES_OCS` and `FCT_REGULATOR_MONTHLY_SALES_BCCS`.** The regulator
