@@ -2,7 +2,7 @@
 # BBFYB Data Feed — Data Dictionary
 
 *Best Bang For Your Bud (BBFYB) retail cannabis dataset — reference guide for data consumers.*
-*Version 2.9 — November 2026 (changelog at the bottom). Questions: hi@weedcrawler.ca*
+*Version 2.11 — November 2026 (changelog at the bottom). Questions: hi@weedcrawler.ca*
 
 ## What this dataset is
 
@@ -1152,6 +1152,27 @@ entitlement as per-province folders and a private Level 1 folder.
 ---
 
 ## Changelog
+
+**v2.11 (2026-11):** *history restated in three places; no column changed.*
+- **April 8 to 14, 2025, rest of Canada.** For four days the menus of more than a thousand
+  stores on one e-commerce platform intermittently read a stock of zero, then the real stock,
+  and each round trip was booked as a sale. Those phantom sales were removed, and the stores
+  still above twice their usual level on those days were brought back to their own trend (same
+  weekdays of the surrounding weeks). About $21M less on the week of April 7, 2025: Ontario
+  $15M, British Columbia $2.9M, Newfoundland and Labrador $1.4M, Alberta $1.1M, Manitoba $0.5M,
+  Saskatchewan $0.2M. The estimated rows (`IS_SYNTHETIC = TRUE`) of April 7 to May 11, 2025 were
+  re-estimated from the corrected observations. Nova Scotia, New Brunswick and Prince Edward
+  Island did not change. **Quebec did not change.**
+- **Manitoba, September 15 and 16, 2025.** One Winnipeg accessory store with a frozen feed
+  recorded $4.8M over two days when the feed died. Both days were removed: Manitoba for September
+  2025 is 35% lower in dollars, 38% lower in units.
+- **New Brunswick, April 27 to August 7, 2026.** Cannabis NB's online store recorded $8.8M of
+  phantom sales (its quantity flipped between zero and the real stock between reads). The window
+  was removed: New Brunswick is 27% lower in May, 25% in June and 22% in July 2026 (dollars),
+  14 to 19% lower in units. The channel stays in the data with its real sales since October 28.
+- Read Nova Scotia, New Brunswick and Prince Edward Island by week: their provincial feeds
+  close on statutory holidays and sometimes thaw in a single day, so a daily spike there is not
+  an error of the week.
 
 **v2.10 (2026-11):** *three views added; nothing existing changes.*
 - **`BBFYB_CLIENT_SCOPED.REPORTS`.** `V_REGULATOR_MONTHLY_SALES` (the regulator market rows
