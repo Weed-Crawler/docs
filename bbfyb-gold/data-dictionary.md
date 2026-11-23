@@ -1158,10 +1158,12 @@ entitlement as per-province folders and a private Level 1 folder.
   stores on one e-commerce platform intermittently read a stock of zero, then the real stock,
   and each round trip was booked as a sale. Those phantom sales were removed, and the stores
   still above twice their usual level on those days were brought back to their own trend (same
-  weekdays of the surrounding weeks). About $21M less on the week of April 7, 2025: Ontario
-  $15M, British Columbia $2.9M, Newfoundland and Labrador $1.4M, Alberta $1.1M, Manitoba $0.5M,
-  Saskatchewan $0.2M. The estimated rows (`IS_SYNTHETIC = TRUE`) of April 7 to May 11, 2025 were
-  re-estimated from the corrected observations. Nova Scotia, New Brunswick and Prince Edward
+  weekdays of the surrounding weeks). About $23M less on the week of April 7, 2025: Ontario
+  $16.7M (the week goes from $44.4M to $27.7M, the level of its neighbours), British Columbia
+  $3.3M, Newfoundland and Labrador $1.4M, Alberta $1.2M, Manitoba $0.4M, Saskatchewan $0.2M. The
+  estimated rows (`IS_SYNTHETIC = TRUE`) of April 7 to May 11, 2025 were re-estimated from the
+  corrected observations, which takes about $1.8M more off the week of April 14. Restated on
+  November 22, 2026; the Manitoba and New Brunswick corrections below on November 21. Nova Scotia, New Brunswick and Prince Edward
   Island did not change. **Quebec did not change.**
 - **Manitoba, September 15 and 16, 2025.** One Winnipeg accessory store with a frozen feed
   recorded $4.8M over two days when the feed died. Both days were removed: Manitoba for September
