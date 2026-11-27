@@ -2,7 +2,7 @@
 # BBFYB Data Feed — Data Dictionary
 
 *Best Bang For Your Bud (BBFYB) retail cannabis dataset — reference guide for data consumers.*
-*Version 2.12 — November 2026 (changelog at the bottom). Questions: hi@weedcrawler.ca*
+*Version 2.13 — November 2026 (changelog at the bottom). Questions: hi@weedcrawler.ca*
 
 ## What this dataset is
 
@@ -407,8 +407,8 @@ agreement covers:
 | View | What it returns | Columns |
 |---|---|---|
 | `BBFYB_CLIENT_SCOPED.REPORTS.V_REGULATOR_MONTHLY_SALES` | `FCT_REGULATOR_MONTHLY_SALES` rows of the regulators you have access to | same 14 columns, same order and types |
-| `BBFYB_CLIENT_SCOPED.REPORTS.V_TIER2_SELLIN` | your own OCS sell-in (Level 1), by store and product | your OCS vendor number's rows |
-| `BBFYB_CLIENT_SCOPED.REPORTS.V_TIER2_SELLIN_WEEKLY` | your own BC weekly sell-in (Level 1), by store and product | your BC vendor number's rows |
+| `BBFYB_CLIENT_SCOPED.REPORTS.V_TIER2_SELLIN` | your own OCS sell-in (Level 1), by store and product | your OCS vendor number's rows, or only your granted SKUs (see below) |
+| `BBFYB_CLIENT_SCOPED.REPORTS.V_TIER2_SELLIN_WEEKLY` | your own BC weekly sell-in (Level 1), by store and product | your BC vendor number's rows, or only your granted SKUs (see below) |
 
 - Access to a regulator's market follows your agreement and the reports you
   send us: it opens on its own when a report arrives and is refreshed every
@@ -418,6 +418,13 @@ agreement covers:
   the name in your query, nothing else.
 - Your own Level 1 rows stay available after a market lapses: they are your
   data.
+- *From v2.13.* If your products are filed under another company's vendor
+  number (you sell through a supplier of record), the Level 1 views return
+  only the SKUs granted to you, as the regulator prints them in its file,
+  from the date of the grant. Rows of that vendor's other products are never
+  shown, and a change in how our catalog matches a product does not add or
+  remove a granted SKU. Ask us to add a new SKU once it appears in your file.
+
 
 ### FCT_STATCAN_RETAIL_MONTHLY — official market size (Statistics Canada)
 
@@ -1160,6 +1167,12 @@ entitlement as per-province folders and a private Level 1 folder.
 ---
 
 ## Changelog
+
+**v2.13 (2026-11):** *no column or table changes for clients; two views return more precise rows.*
+- **`V_TIER2_SELLIN` and `V_TIER2_SELLIN_WEEKLY`.** A producer filed under another company's
+  vendor number now sees its granted SKUs there (from the grant date), and nothing else of that
+  vendor. Producers with their own vendor number see the same rows as before.
+- Same columns, same order and types.
 
 **v2.12 (2026-11-27):** *how you reach the regulator data changes; its contents do not.*
 - **Feed (Fabric / S3).** The combined `fct_regulator_monthly_sales` folder is no longer shared.
