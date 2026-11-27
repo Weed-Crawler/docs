@@ -2,7 +2,7 @@
 # BBFYB Data Feed — Data Dictionary
 
 *Best Bang For Your Bud (BBFYB) retail cannabis dataset — reference guide for data consumers.*
-*Version 2.11 — November 2026 (changelog at the bottom). Questions: hi@weedcrawler.ca*
+*Version 2.12 — November 2026 (changelog at the bottom). Questions: hi@weedcrawler.ca*
 
 ## What this dataset is
 
@@ -389,6 +389,14 @@ subscription can then include one province without the other.
   each night, so the two always agree by the time the chain finishes.
 - New provinces get their own table (`FCT_REGULATOR_MONTHLY_SALES_<CODE>`)
   when their regulator data is loaded; the combined table keeps every province.
+
+> **From 2026-11-27 (v2.12), how you receive regulator data depends on how you
+> connect.** Feed (Fabric / S3) subscribers get one folder per province their
+> agreement covers. The combined table's folder is no longer shared. Direct
+> Snowflake users read `BBFYB_CLIENT_SCOPED.REPORTS.V_REGULATOR_MONTHLY_SALES`
+> (below). The tables in `BBFYB_INTEGRATEIO.GOLD` are no longer readable from
+> client accounts. Same columns and rows: change the name or the folder, not the
+> query.
 
 #### Scoped to your entitlement: BBFYB_CLIENT_SCOPED.REPORTS
 
@@ -1152,6 +1160,14 @@ entitlement as per-province folders and a private Level 1 folder.
 ---
 
 ## Changelog
+
+**v2.12 (2026-11-27):** *how you reach the regulator data changes; its contents do not.*
+- **Feed (Fabric / S3).** The combined `fct_regulator_monthly_sales` folder is no longer shared.
+  Read the province folders your agreement covers (`fct_regulator_monthly_sales_ocs`,
+  `fct_regulator_monthly_sales_bccs`).
+- **Direct Snowflake.** `FCT_REGULATOR_MONTHLY_SALES` and the province tables are no longer
+  readable from client accounts. Use `BBFYB_CLIENT_SCOPED.REPORTS.V_REGULATOR_MONTHLY_SALES`:
+  same columns, the provinces you have access to.
 
 **v2.11 (2026-11):** *history restated in three places; no column changed.*
 - **April 8 to 14, 2025, rest of Canada.** For four days the menus of more than a thousand
